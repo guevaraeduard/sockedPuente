@@ -27,11 +27,12 @@ let data_lines = [];
 let crossing = false;
 let intervalActive = false; // Variable para rastrear si el intervalo está activo
 let data_off_crossing = [];
+let crossing_online = null;
 // Función que convierte crossing en true y emite un evento
 function setCrossing(socket, data_vehicle) {
   crossing = true;
   console.log("Crossing ha sido establecido en true");
-
+  crossing_online = data_vehicle;
   // Elimina el primer elemento de data_lines
   data_lines.shift();
   //Emitir evento el cual realice 1 actualziar la lista de vehiculos y 2 actualziar el estado de cruce
@@ -44,6 +45,18 @@ function setCrossing(socket, data_vehicle) {
     crossing = false;
     //Aqui agregar el vehiculo a la lista de vehiculos que salieron del cruce
     //Despues accedr a cuantos segundos tiene que esperar para volver a ingresar a la cola
+    setTimeout(() => {
+      if (data_users[data_vehicle.id]) {
+        data_lines.push(data_vehicle);
+        console.log("Vehículo agregado de nuevo a data_lines:", data_vehicle);
+        // Emitir evento para actualizar la lista de vehículos
+        io.to("vehicle-line").emit("dataLine", {
+          list_vehicles: data_lines,
+          crossing: true,
+          animation_crossing: null,
+        });
+      }
+    }, data_vehicle.data.delay * 1000);
   }, data_vehicle.time * 1000);
 }
 
@@ -53,7 +66,7 @@ const checkDataLines = (socket) => {
     // Llama a la función para establecer crossing en true
     setCrossing(socket, data_lines[0]);
     console.log("Primer dato eliminado, nuevo data_lines:", data_lines);
-  }else if(data_lines.length == 0 && !crossing){
+  } else if (data_lines.length == 0 && !crossing) {
     io.to("vehicle-line").emit("updateCrossing", false);
   }
 };
@@ -84,7 +97,11 @@ io.on("connection", (socket) => {
 
     socket.join("vehicle-line");
     //Emite a todos los usuarios que estan en la Sala
-    io.to("vehicle-line").emit("dataLine", {list_vehicles: data_lines, crossing: crossing});
+    io.to("vehicle-line").emit("dataLine", {
+      list_vehicles: data_lines,
+      crossing: crossing,
+      animation_crossing: crossing_online,
+    });
     //Emite a todos los usuarios que estan en la Sala menos al mismo
     // socket.to("vehicle-line").emit("newVehicle", 'El usuario '+ name + ' se ha unido a la cola del puente')
 
@@ -101,7 +118,12 @@ io.on("connection", (socket) => {
     // Modifica el contenido de data_lines en lugar de reasignarlo
     data_lines = data_lines.filter((line) => line.id !== id_user);
     socket.leave("vehicle-line");
-    io.to("vehicle-line").emit("dataLine", data_lines);
+  
+    io.to("vehicle-line").emit("dataLine", {
+      list_vehicles: data_lines,
+      crossing: crossing,
+      animation_crossing: null,
+    });
   });
 
   socket.on("disconnect", () => {
